@@ -1,5 +1,10 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
+//const mongoose = require('mongoose');
+
+const Note = require('./models/note');
 
 const app = express();
 
@@ -7,84 +12,64 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('dist'));
 
-let notes = [
-  {
-    id: 1,
-    content: 'HTML is easy',
-    important: true,
-  },
-  {
-    id: 2,
-    content: 'Browser can execute only JavaScript',
-    important: false,
-  },
-  {
-    id: 3,
-    content: 'GET and POST are the most important methods of HTTP protocol',
-    important: true,
-  },
-  {
-    id: 4,
-    content: 'Tus madres no son mis padres',
-    important: false,
-  },
-];
-
-// const app = http.createServer((request, response) => {
-//   response.writeHead(200, { 'Content-Type': 'text/plain' });
-//   response.end(JSON.stringify(notes));
-// });
-
 const generateId = () => {
   const maxId = notes.length > 0 ? Math.max(...notes.map((n) => n.id)) : 0;
 
   return maxId + 1;
 };
 
-// app.get('/', (request, response) => {
-//   response.send('<h1>Hello World!</h1>');
-// });
-
 app.get('/api/notes', (request, response) => {
-  response.json(notes);
+  Note.find({}).then((notes) => {
+    response.json(notes);
+  });
 });
 
 app.get('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id);
-  const note = notes.find((note) => note.id === id);
-
-  if (note) {
+  Note.findById(request.params.id).then((note) => {
     response.json(note);
-  } else {
-    response.status(400).end();
-  }
+  });
 });
 
-app.delete('/api/notes/:id', (request, response) => {
-  const id = Number(request.params.id);
-  notes = notes.filter((note) => note.id !== id);
-
-  response.status(204).end();
+app.delete('/api/notes/:_id', (request, response) => {
+  Note.deleteOne(request.params).then((result) => {
+    response.json(result);
+  });
 });
 
 app.post('/api/notes', (request, response) => {
   const body = request.body;
 
-  if (!body.content) {
+  if (!body.content || body.content === undefined) {
     return response.status(400).json({
       error: 'Content is missing',
     });
   }
 
-  const note = {
-    id: generateId(),
+  const note = new Note({
     content: body.content,
     important: Boolean(body.important) || false,
+  });
+
+  note.save().then((savedNote) => {
+    response.json(savedNote);
+  });
+});
+
+app.put('/api/notes/:id', (request, response) => {
+  const note = {
+    content: request.body.content,
+    important: request.body.important,
   };
 
-  notes = notes.concat(note);
+  const opts = {
+    runValidators: true,
+    new: true,
+    context: 'query',
+  };
 
-  response.json(note);
+  Note.findByIdAndUpdate(request.params.id, note, opts).then((note) => {
+    response.json(note);
+  });
 });
 
 const PORT = process.env.PORT || 3001;
