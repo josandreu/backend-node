@@ -1,32 +1,44 @@
 const mongoose = require('mongoose');
+const config = require('./utils/config');
+const logger = require('./utils/logger').default;
 
-const url = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@fullstack-db.viyas.mongodb.net/noteApp?retryWrites=true&w=majority&appName=Fullstack-db`;
+const Note = require('./models/note');
+
+// if (process.argv.length < 3) {
+//   console.log('give password as argument');
+//   process.exit(1);
+// }
+
+// const password = process.argv[2];
+
+const url = `mongodb+srv://${config.DB_USER}:${config.DB_PASS}@${config.TEST_DB_URL}`;
 
 mongoose.set('strictQuery', false);
 
-mongoose.connect(url);
+logger.info('connecting to', url);
 
-const noteSchema = new mongoose.Schema({
-  content: String,
-  important: Boolean,
+mongoose
+  .connect(url)
+  .then((result) => {
+    logger.info('connected to MongoDB');
+  })
+  .catch((error) => {
+    logger.info('error connecting to MongoDB:', error.message);
+  });
+
+const note = new Note({
+  content: 'Pay more attention please',
+  important: true,
 });
 
-const Note = mongoose.model('Note', noteSchema);
-
-// const note = new Note({
-//   content: 'Tus padres no son mis padres',
-//   important: true,
-// });
-
-// note.save().then((result) => {
-//   console.log('note saved!');
-//   console.log(result);
-//   mongoose.connection.close();
-// });
-
-Note.find({ important: true }).then((result) => {
-  result.forEach((note) => {
-    console.log('note', note);
-  });
+note.save().then((result) => {
+  console.log('note saved!');
   mongoose.connection.close();
 });
+
+// Note.find({}).then((result) => {
+//   result.forEach((note) => {
+//     console.log(note);
+//   });
+//   mongoose.connection.close();
+// });
