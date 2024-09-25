@@ -12,11 +12,48 @@ const api = supertest(app);
 
 beforeEach(async () => {
   await Note.deleteMany({});
-  let noteObject = new Note(initialNotes[0]);
-  await noteObject.save();
+  console.log('cleared');
 
-  noteObject = new Note(initialNotes[1]);
-  await noteObject.save();
+  /*
+    initialNotes.forEach(async (note) => {
+    let noteObject = new Note(note);
+    await noteObject.save();
+    console.log('saved');
+    });
+
+    cleared
+    done
+    entered test
+    saved
+    saved
+
+    El problema es que cada iteración del bucle forEach genera su propia operación asíncrona, y beforeEach no esperará a que terminen de ejecutarse. En otras palabras, los comandos await definidos dentro del bucle forEach no están en la función beforeEach, sino en funciones separadas que beforeEach no esperará.
+
+    Dado que la ejecución de las pruebas comienza inmediatamente después de que beforeEach haya terminado de ejecutarse, la ejecución de las pruebas comienza antes de que se inicialice el estado de la base de datos.
+
+    Opción 1:
+    beforeEach(async () => {
+      await Note.deleteMany({})
+
+      const noteObjects = helper.initialNotes
+        .map(note => new Note(note))
+      const promiseArray = noteObjects.map(note => note.save())
+      await Promise.all(promiseArray)
+    })
+
+    Opción 2:
+    for (let note of initialNotes) {
+      const noteObject = new Note(note);
+      await noteObject.save();
+      console.log('saved');
+    }
+  */
+
+  await Note.deleteMany({});
+
+  await Note.insertMany(initialNotes);
+
+  console.log('done');
 });
 
 test('notes are returned as json', async () => {
