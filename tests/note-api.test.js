@@ -1,144 +1,170 @@
-const { test, after, beforeEach } = require('node:test');
+const { test, after, beforeEach, describe } = require('node:test');
 const assert = require('node:assert');
 const mongoose = require('mongoose');
 const supertest = require('supertest');
 const app = require('../app');
+const api = supertest(app);
+
 const helper = require('./test-helper');
+
 const Note = require('../models/note');
 
 const initialNotes = helper.initialNotes;
 
-const api = supertest(app);
+describe('when there is initially some notes saved', () => {
+  beforeEach(async () => {
+    await Note.deleteMany({});
+    console.log('cleared');
 
-beforeEach(async () => {
-  await Note.deleteMany({});
-  console.log('cleared');
-
-  /*
-    initialNotes.forEach(async (note) => {
-    let noteObject = new Note(note);
-    await noteObject.save();
-    console.log('saved');
-    });
-
-    cleared
-    done
-    entered test
-    saved
-    saved
-
-    El problema es que cada iteración del bucle forEach genera su propia operación asíncrona, y beforeEach no esperará a que terminen de ejecutarse. En otras palabras, los comandos await definidos dentro del bucle forEach no están en la función beforeEach, sino en funciones separadas que beforeEach no esperará.
-
-    Dado que la ejecución de las pruebas comienza inmediatamente después de que beforeEach haya terminado de ejecutarse, la ejecución de las pruebas comienza antes de que se inicialice el estado de la base de datos.
-
-    Opción 1:
-    beforeEach(async () => {
-      await Note.deleteMany({})
-
-      const noteObjects = helper.initialNotes
-        .map(note => new Note(note))
-      const promiseArray = noteObjects.map(note => note.save())
-      await Promise.all(promiseArray)
-    })
-
-    Opción 2:
-    for (let note of initialNotes) {
-      const noteObject = new Note(note);
+    /*
+      initialNotes.forEach(async (note) => {
+      let noteObject = new Note(note);
       await noteObject.save();
       console.log('saved');
-    }
-  */
+      });
+  
+      cleared
+      done
+      entered test
+      saved
+      saved
+  
+      El problema es que cada iteración del bucle forEach genera su propia operación asíncrona, y beforeEach no esperará a que terminen de ejecutarse. En otras palabras, los comandos await definidos dentro del bucle forEach no están en la función beforeEach, sino en funciones separadas que beforeEach no esperará.
+  
+      Dado que la ejecución de las pruebas comienza inmediatamente después de que beforeEach haya terminado de ejecutarse, la ejecución de las pruebas comienza antes de que se inicialice el estado de la base de datos.
+  
+      Opción 1:
+      beforeEach(async () => {
+        await Note.deleteMany({})
+  
+        const noteObjects = helper.initialNotes
+          .map(note => new Note(note))
+        const promiseArray = noteObjects.map(note => note.save())
+        await Promise.all(promiseArray)
+      })
+  
+      Opción 2:
+      for (let note of initialNotes) {
+        const noteObject = new Note(note);
+        await noteObject.save();
+        console.log('saved');
+      }
+    */
 
-  await Note.deleteMany({});
+    await Note.insertMany(initialNotes);
 
-  await Note.insertMany(initialNotes);
+    console.log('done');
+  });
 
-  console.log('done');
-});
+  test('notes are returned as json', async () => {
+    await api
+      .get('/api/notes')
+      .expect(200)
+      .expect('Content-Type', /application\/json/);
+  });
 
-test('notes are returned as json', async () => {
-  await api
-    .get('/api/notes')
-    .expect(200)
-    .expect('Content-Type', /application\/json/);
-});
+  test('all notes are returned', async () => {
+    const response = await api.get('/api/notes');
 
-test('there are two notes', async () => {
-  const response = await api.get('/api/notes');
+    // la ejecución llega aquí solo después de que se completa la solicitud HTTP
+    // el resultado de la solicitud HTTP se guarda en la variable response
+    assert.strictEqual(response.body.length, initialNotes.length);
+  });
 
-  // la ejecución llega aquí solo después de que se completa la solicitud HTTP
-  // el resultado de la solicitud HTTP se guarda en la variable response
-  assert.strictEqual(response.body.length, initialNotes.length);
-});
+  test('a specific note is within the returned notes', async () => {
+    const response = await api.get('/api/notes');
 
-test('the first note is about HTTP methods', async () => {
-  const response = await api.get('/api/notes');
+    const contents = response.body.map((r) => r.content);
+    assert(contents.includes('Browser can execute only JavaScript'));
+  });
 
-  const contents = response.body.map((e) => e.content);
-  assert(contents.includes('HTML is easy'));
-});
+  test('the first note is about HTTP methods', async () => {
+    const response = await api.get('/api/notes');
 
-test('a valid note can be added', async () => {
-  const newNote = {
-    content: 'async/await simplifies making async calls',
-    important: true,
-  };
+    const contents = response.body.map((e) => e.content);
+    assert(contents.includes('HTML is easy'));
+  });
 
-  await api
-    .post('/api/notes')
-    .send(newNote)
-    .expect(201)
-    .expect('Content-Type', /application\/json/);
+  describe('viewing a specific note', () => {
+    test('succeeds with a valid id', async () => {
+      const notesAtStart = await helper.notesInDb();
 
-  const notesAtEnd = await helper.notesInDb();
-  const contents = notesAtEnd.map((r) => r.content);
+      const noteToView = notesAtStart[0];
 
-  assert.strictEqual(notesAtEnd.length, initialNotes.length + 1);
+      const resultNote = await api
+        .get(`/api/notes/${noteToView.id}`)
+        .expect(200)
+        .expect('Content-Type', /application\/json/);
 
-  assert(contents.includes('async/await simplifies making async calls'));
-});
+      assert.deepStrictEqual(resultNote.body, noteToView);
+    });
 
-test('note without content is not added', async () => {
-  const newNote = {
-    important: true,
-  };
+    test('fails with statuscode 404 if note does not exist', async () => {
+      const validNonexistingId = await helper.nonExistingId();
 
-  await api
-    .post('/api/notes')
-    .send(newNote)
-    .expect(400)
-    .expect('Content-Type', /application\/json/);
+      await api.get(`/api/notes/${validNonexistingId}`).expect(404);
+    });
 
-  const notesAtEnd = await helper.notesInDb();
+    test('fails with statuscode 400 id is invalid', async () => {
+      const invalidId = '5a3d5da59070081a82a3445';
 
-  assert.strictEqual(notesAtEnd.length, initialNotes.length);
-});
+      await api.get(`/api/notes/${invalidId}`).expect(400);
+    });
+  });
 
-test('a specific note can be viewed', async () => {
-  const notesAtStart = await helper.notesInDb();
+  describe('addition of a new note', () => {
+    test('succeeds with valid data', async () => {
+      const newNote = {
+        content: 'async/await simplifies making async calls',
+        important: true,
+      };
 
-  const noteToView = notesAtStart[0];
+      await api
+        .post('/api/notes')
+        .send(newNote)
+        .expect(201)
+        .expect('Content-Type', /application\/json/);
 
-  const resultNote = await api
-    .get(`/api/notes/${noteToView.id}`)
-    .expect(200)
-    .expect('Content-Type', /application\/json/);
+      const notesAtEnd = await helper.notesInDb();
+      const contents = notesAtEnd.map((r) => r.content);
 
-  assert.deepStrictEqual(resultNote.body, noteToView);
-});
+      assert.strictEqual(notesAtEnd.length, initialNotes.length + 1);
 
-test('a note can be deleted', async () => {
-  const notesAtStart = await helper.notesInDb();
-  const noteToDelete = notesAtStart[0];
+      assert(contents.includes('async/await simplifies making async calls'));
+    });
 
-  await api.delete(`/api/notes/${noteToDelete.id}`).expect(204);
+    test('fails with status code 400 if data invalid', async () => {
+      const newNote = {
+        important: true,
+      };
 
-  const notesAtEnd = await helper.notesInDb();
+      await api
+        .post('/api/notes')
+        .send(newNote)
+        .expect(400)
+        .expect('Content-Type', /application\/json/);
 
-  const contents = notesAtEnd.map((r) => r.response);
-  assert(!contents.includes(noteToDelete.content));
+      const notesAtEnd = await helper.notesInDb();
 
-  assert.strictEqual(notesAtEnd.length, helper.initialNotes.length - 1);
+      assert.strictEqual(notesAtEnd.length, initialNotes.length);
+    });
+  });
+
+  describe('deletion of a note', () => {
+    test('succeeds with status code 204 if id is valid', async () => {
+      const notesAtStart = await helper.notesInDb();
+      const noteToDelete = notesAtStart[0];
+
+      await api.delete(`/api/notes/${noteToDelete.id}`).expect(204);
+
+      const notesAtEnd = await helper.notesInDb();
+
+      assert.strictEqual(notesAtEnd.length, helper.initialNotes.length - 1);
+
+      const contents = notesAtEnd.map((r) => r.content);
+      assert(!contents.includes(noteToDelete.content));
+    });
+  });
 });
 
 after(async () => {
